@@ -1,0 +1,6 @@
+{
+  "name": "NetSubnet Vault",
+  "description": "Professional IPv4 & VLSM Subnet Calculator with an authenticated Private Cloud Vault and PHP Admin Panel without SQL database",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

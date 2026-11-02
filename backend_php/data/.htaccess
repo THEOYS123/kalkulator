@@ -1,0 +1,8 @@
+# NetSubnet Security Barrier
+# Melindungi semua data akun, token sesi, dan file privat dari akses HTTP langsung
+Order Allow,Deny
+Deny from all
+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
