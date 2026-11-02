@@ -25,8 +25,10 @@ class UserPreferencesRepository(private val context: Context) {
         private val KEY_AUTH_USERNAME = stringPreferencesKey("cloud_auth_username")
         private val KEY_HISTORY_JSON = stringPreferencesKey("calc_history_json")
         private val KEY_SECRET_TRIGGER_INFO_SEEN = booleanPreferencesKey("vault_trigger_info_seen")
+        private val KEY_SECRET_IP_CODE = stringPreferencesKey("vault_secret_ip_code")
 
         const val DEFAULT_PIN = "1234"
+        const val DEFAULT_SECRET_IP = "192.168.99.99"
         const val DEFAULT_SERVER_URL = "http://10.0.2.2/backend_php/api.php"
     }
 
@@ -37,6 +39,7 @@ class UserPreferencesRepository(private val context: Context) {
     }
 
     val pinHashFlow: Flow<String?> = context.dataStore.data.map { it[KEY_PIN_HASH] }
+    val secretIpCodeFlow: Flow<String> = context.dataStore.data.map { it[KEY_SECRET_IP_CODE] ?: DEFAULT_SECRET_IP }
     val biometricEnabledFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_BIOMETRIC_ENABLED] ?: false }
     val failedAttemptsFlow: Flow<Int> = context.dataStore.data.map { it[KEY_FAILED_ATTEMPTS] ?: 0 }
     val lockoutUntilFlow: Flow<Long> = context.dataStore.data.map { it[KEY_LOCKOUT_UNTIL] ?: 0L }
@@ -44,6 +47,10 @@ class UserPreferencesRepository(private val context: Context) {
     val authTokenFlow: Flow<String?> = context.dataStore.data.map { it[KEY_AUTH_TOKEN] }
     val authUsernameFlow: Flow<String?> = context.dataStore.data.map { it[KEY_AUTH_USERNAME] }
     val historyJsonFlow: Flow<String?> = context.dataStore.data.map { it[KEY_HISTORY_JSON] }
+
+    suspend fun setSecretIpCode(code: String) {
+        context.dataStore.edit { it[KEY_SECRET_IP_CODE] = code.trim() }
+    }
 
     suspend fun verifyPin(enteredPin: String): Boolean {
         val enteredHash = hashPin(enteredPin)

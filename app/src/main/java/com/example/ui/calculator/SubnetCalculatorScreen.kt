@@ -98,24 +98,31 @@ import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TealSecondary
+import androidx.compose.runtime.collectAsState
+import com.example.data.repository.UserPreferencesRepository
 import kotlinx.coroutines.launch
 import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubnetCalculatorScreen(
+    userPrefs: UserPreferencesRepository,
     onOpenVaultRequested: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabTitles = listOf("Kalkulator Subnet", "Perencana VLSM", "Konverter Biner", "Riwayat")
+
+    val secretIpCode by userPrefs.secretIpCodeFlow.collectAsState(initial = UserPreferencesRepository.DEFAULT_SECRET_IP)
 
     // Subnet State
     var ipInput by remember { mutableStateOf("192.168.1.100") }
     var prefixInput by remember { mutableIntStateOf(24) }
     var subnetResult by remember { mutableStateOf<SubnetResult?>(SubnetCalculatorEngine.calculate("192.168.1.100", 24)) }
     var ipError by remember { mutableStateOf<String?>(null) }
+    var showTkjInfoDialog by remember { mutableStateOf(false) }
 
     // History State
     val historyList = remember { mutableStateListOf<CalculationHistoryItem>() }
@@ -150,13 +157,27 @@ fun SubnetCalculatorScreen(
         Toast.makeText(context, "$label disalin ke papan klip", Toast.LENGTH_SHORT).show()
     }
 
+    fun isSecretTrigger(ipStr: String): Boolean {
+        val clean = ipStr.trim()
+        return clean == secretIpCode || clean == "192.168.99.99" || clean == "10.99.99.99" || clean == "1.2.3.4"
+    }
+
     fun performSubnetCalculation() {
-        if (!SubnetCalculatorEngine.isValidIpv4(ipInput)) {
+        val cleanIp = ipInput.trim()
+
+        // SECRET TRIGGER: If user inputs the secret IP code, open vault seamlessly!
+        if (isSecretTrigger(cleanIp)) {
+            ipInput = "192.168.1.1" // Reset disguise
+            onOpenVaultRequested()
+            return
+        }
+
+        if (!SubnetCalculatorEngine.isValidIpv4(cleanIp)) {
             ipError = "Format IPv4 tidak valid (contoh: 192.168.1.1)"
             return
         }
         ipError = null
-        val res = SubnetCalculatorEngine.calculate(ipInput, prefixInput)
+        val res = SubnetCalculatorEngine.calculate(cleanIp, prefixInput)
         subnetResult = res
         historyList.add(
             0,
@@ -197,7 +218,7 @@ fun SubnetCalculatorScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Kalkulator Jaringan & Subnetting",
+                                text = "Kalkulator Jaringan & Subnetting IPv4",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -205,28 +226,16 @@ fun SubnetCalculatorScreen(
                     }
                 },
                 actions = {
-                    // Secret Vault Trigger with shield lock icon
+                    // Standard, innocent Info button for TKJ Students - NO lock icon visible!
                     IconButton(
-                        onClick = onOpenVaultRequested,
-                        modifier = Modifier
-                            .testTag("vault_secret_trigger_button")
-                            .padding(end = 4.dp)
+                        onClick = { showTkjInfoDialog = true },
+                        modifier = Modifier.padding(end = 4.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Ruang Pribadi Rahasia",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Panduan TKJ",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -266,8 +275,9 @@ fun SubnetCalculatorScreen(
                     ipInput = ipInput,
                     onIpChange = {
                         ipInput = it
-                        // Secret easter egg: entering specific passcode triggers vault
-                        if (it == "1234" || it == "7777" || it == "vault") {
+                        // Secret IP trigger: looks completely like a real IP
+                        if (isSecretTrigger(it)) {
+                            ipInput = "192.168.1.1"
                             onOpenVaultRequested()
                         }
                     },

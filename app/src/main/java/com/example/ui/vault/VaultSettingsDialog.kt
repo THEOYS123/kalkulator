@@ -68,11 +68,13 @@ fun VaultSettingsDialog(
     val scope = rememberCoroutineScope()
 
     val serverUrl by userPrefs.serverUrlFlow.collectAsState(initial = UserPreferencesRepository.DEFAULT_SERVER_URL)
+    val secretIpCode by userPrefs.secretIpCodeFlow.collectAsState(initial = UserPreferencesRepository.DEFAULT_SECRET_IP)
     val authToken by userPrefs.authTokenFlow.collectAsState(initial = null)
     val authUsername by userPrefs.authUsernameFlow.collectAsState(initial = null)
     val isBiometricEnabled by userPrefs.biometricEnabledFlow.collectAsState(initial = false)
 
     var currentUrlInput by remember(serverUrl) { mutableStateOf(serverUrl) }
+    var secretIpInput by remember(secretIpCode) { mutableStateOf(secretIpCode) }
 
     // PIN Change state
     var currentPinInput by remember { mutableStateOf("") }
@@ -191,6 +193,49 @@ fun VaultSettingsDialog(
                                     scope.launch { userPrefs.setBiometricEnabled(it) }
                                 }
                             )
+                        }
+                    }
+                }
+
+                // Secret Trigger IP Setting Card
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Kode IP Pemicu Rahasia", fontWeight = FontWeight.Bold)
+                        }
+
+                        Text(
+                            text = "Ketik alamat IP ini pada kolom input kalkulator utama, lalu tekan 'Hitung Subnet' untuk membuka brankas secara tersembunyi. Tidak ada tombol atau tanda rahasia yang terlihat pada antarmuka aplikasi.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        OutlinedTextField(
+                            value = secretIpInput,
+                            onValueChange = { secretIpInput = it },
+                            label = { Text("Alamat IP Pemicu") },
+                            placeholder = { Text("Contoh: 192.168.99.99") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Button(
+                            onClick = {
+                                if (secretIpInput.isNotBlank()) {
+                                    scope.launch {
+                                        userPrefs.setSecretIpCode(secretIpInput)
+                                        Toast.makeText(context, "Kode IP rahasia berhasil disimpan: $secretIpInput", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Simpan Kode IP Pemicu")
                         }
                     }
                 }

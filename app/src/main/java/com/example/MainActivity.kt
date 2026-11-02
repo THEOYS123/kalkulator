@@ -77,6 +77,7 @@ fun AppNavigation(
         when (currentScreen) {
             ScreenState.CALCULATOR -> {
                 SubnetCalculatorScreen(
+                    userPrefs = userPrefs,
                     onOpenVaultRequested = {
                         screenState = ScreenState.VAULT_LOCK
                     }
