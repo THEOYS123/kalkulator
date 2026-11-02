@@ -36,14 +36,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $password = $_POST['password'] ?? '';
 
             if ($authService->verifyAdminCredentials($username, $password, $config)) {
-                // Periksa apakah Telegram sudah dikonfigurasi
-                if (empty($config['telegram_bot_token']) || empty($config['telegram_admin_chat_id'])) {
-                    // Jika bot token belum disetel pada saat pertama kali deploy, izinkan bypass awal dengan peringatan
+                // Periksa apakah fitur 2FA Telegram diaktifkan atau token belum disetel
+                if (empty($config['enable_telegram_2fa']) || empty($config['telegram_bot_token']) || empty($config['telegram_admin_chat_id'])) {
                     $_SESSION['admin_logged_in'] = true;
                     $_SESSION['admin_username'] = $username;
                     unset($_SESSION['login_step']);
-                    $storage->logAudit('ADMIN_LOGIN_NO_OTP', $username, ['note' => 'Telegram belum dikonfigurasi']);
-                    header('Location: index.php?notice=configure_telegram');
+                    $storage->logAudit('ADMIN_LOGIN_DIRECT', $username, ['note' => 'Login langsung tanpa OTP Telegram']);
+                    header('Location: index.php');
                     exit;
                 }
 
@@ -54,7 +53,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['pending_otp_id'] = $otpRes['otp_id'];
                     $_SESSION['login_step'] = 'otp';
                     $step = 'otp';
-                    $info = "Kode OTP verifikasi telah dikirim ke Telegram Chat ID Admin. Masukkan kode di bawah ini:";
+                    if (!empty($otpRes['is_emergency'])) {
+                        $info = "<b>Perhatian:</b> Hosting Anda (InfinityFree) memblokir koneksi keluar ke api.telegram.org.<br>"
+                              . "Agar Anda tidak terkunci, gunakan <b>Kode OTP Darurat:</b> <code style='font-size:18px; color:#ffb703;'>" . htmlspecialchars($otpRes['emergency_otp']) . "</code><br>"
+                              . "Masukkan kode ini di bawah untuk masuk ke dashboard:";
+                    } else {
+                        $info = "Kode OTP verifikasi telah dikirim ke Telegram Chat ID Admin. Masukkan kode di bawah ini:";
+                    }
                 } else {
                     $error = $otpRes['error'];
                 }

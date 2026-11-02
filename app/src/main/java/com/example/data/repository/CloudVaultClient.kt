@@ -26,21 +26,57 @@ class CloudVaultClient {
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
+    private fun normalizeUrl(url: String): String {
+        val trimmed = url.trim()
+        return if (!trimmed.endsWith(".php") && !trimmed.contains("api.php")) {
+            "${trimmed.trimEnd('/')}/api.php"
+        } else {
+            trimmed
+        }
+    }
+
+    private fun parseJsonResponse(respStr: String, httpCode: Int): JSONObject {
+        val trimmed = respStr.trim()
+        if (trimmed.startsWith("<") || trimmed.contains("<html", ignoreCase = true)) {
+            when {
+                trimmed.contains("aes.js") || trimmed.contains("requires Javascript", ignoreCase = true) || trimmed.contains("InfinityFree", ignoreCase = true) -> {
+                    throw IllegalStateException("Hosting InfinityFree Free Plan memblokir API Android dengan proteksi bot browser (TestCookie/aes.js). Solusi: gunakan hosting API yang mendukung aplikasi mobile seperti Render.com, 000webhost, cPanel, atau XAMPP lokal.")
+                }
+                httpCode == 404 -> {
+                    throw IllegalStateException("File api.php tidak ditemukan di server (HTTP 404). Pastikan file api.php sudah diunggah ke folder htdocs.")
+                }
+                httpCode in 500..599 -> {
+                    throw IllegalStateException("Terjadi kesalahan internal server (HTTP $httpCode). Periksa error log di hosting.")
+                }
+                else -> {
+                    throw IllegalStateException("Server mengembalikan halaman web HTML (bukan JSON API). Periksa kembali URL endpoint di Pengaturan.")
+                }
+            }
+        }
+        return try {
+            JSONObject(trimmed)
+        } catch (e: Exception) {
+            throw IllegalStateException("Format respon server tidak valid: ${trimmed.take(120)}")
+        }
+    }
+
     suspend fun register(serverUrl: String, username: String, password: String): Result<String> = withContext(Dispatchers.IO) {
         try {
+            val endpoint = normalizeUrl(serverUrl)
             val jsonBody = JSONObject().apply {
                 put("username", username)
                 put("password", password)
             }
             val requestBody = jsonBody.toString().toRequestBody("application/json".toMediaTypeOrNull())
             val request = Request.Builder()
-                .url("$serverUrl?action=register")
+                .url("$endpoint?action=register")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; NetSubnet App)")
                 .post(requestBody)
                 .build()
 
             client.newCall(request).execute().use { response ->
                 val respStr = response.body?.string() ?: ""
-                val json = JSONObject(respStr)
+                val json = parseJsonResponse(respStr, response.code)
                 if (response.isSuccessful && json.optBoolean("success", false)) {
                     Result.success(json.optString("message", "Pendaftaran berhasil"))
                 } else {
@@ -54,19 +90,21 @@ class CloudVaultClient {
 
     suspend fun login(serverUrl: String, username: String, password: String): Result<Pair<String, CloudQuotaInfo>> = withContext(Dispatchers.IO) {
         try {
+            val endpoint = normalizeUrl(serverUrl)
             val jsonBody = JSONObject().apply {
                 put("username", username)
                 put("password", password)
             }
             val requestBody = jsonBody.toString().toRequestBody("application/json".toMediaTypeOrNull())
             val request = Request.Builder()
-                .url("$serverUrl?action=login")
+                .url("$endpoint?action=login")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; NetSubnet App)")
                 .post(requestBody)
                 .build()
 
             client.newCall(request).execute().use { response ->
                 val respStr = response.body?.string() ?: ""
-                val json = JSONObject(respStr)
+                val json = parseJsonResponse(respStr, response.code)
                 if (response.isSuccessful && json.optBoolean("success", false)) {
                     val token = json.getString("token")
                     val quotaObj = json.optJSONObject("quota")
@@ -78,7 +116,7 @@ class CloudVaultClient {
                     )
                     Result.success(Pair(token, quotaInfo))
                 } else {
-                    Result.failure(Exception(json.optString("error", "Login gagal ($respStr)")))
+                    Result.failure(Exception(json.optString("error", "Login gagal: ${json.optString("error")}")))
                 }
             }
         } catch (e: Exception) {
@@ -88,15 +126,17 @@ class CloudVaultClient {
 
     suspend fun fetchQuota(serverUrl: String, token: String): Result<CloudQuotaInfo> = withContext(Dispatchers.IO) {
         try {
+            val endpoint = normalizeUrl(serverUrl)
             val request = Request.Builder()
-                .url("$serverUrl?action=quota")
+                .url("$endpoint?action=quota")
                 .header("Authorization", "Bearer $token")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; NetSubnet App)")
                 .get()
                 .build()
 
             client.newCall(request).execute().use { response ->
                 val respStr = response.body?.string() ?: ""
-                val json = JSONObject(respStr)
+                val json = parseJsonResponse(respStr, response.code)
                 if (response.isSuccessful && json.optBoolean("success", false)) {
                     val quotaObj = json.getJSONObject("quota")
                     Result.success(
@@ -118,15 +158,17 @@ class CloudVaultClient {
 
     suspend fun listCloudFiles(serverUrl: String, token: String): Result<List<CloudFileItem>> = withContext(Dispatchers.IO) {
         try {
+            val endpoint = normalizeUrl(serverUrl)
             val request = Request.Builder()
-                .url("$serverUrl?action=list_files")
+                .url("$endpoint?action=list_files")
                 .header("Authorization", "Bearer $token")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; NetSubnet App)")
                 .get()
                 .build()
 
             client.newCall(request).execute().use { response ->
                 val respStr = response.body?.string() ?: ""
-                val json = JSONObject(respStr)
+                val json = parseJsonResponse(respStr, response.code)
                 if (response.isSuccessful && json.optBoolean("success", false)) {
                     val filesArray = json.optJSONArray("files") ?: JSONArray()
                     val list = mutableListOf<CloudFileItem>()
@@ -162,6 +204,7 @@ class CloudVaultClient {
         onProgress: ((Float) -> Unit)? = null
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
+            val endpoint = normalizeUrl(serverUrl)
             val fileBody = decryptedFile.asRequestBody(item.mimeType.toMediaTypeOrNull())
             val multipart = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
@@ -171,19 +214,20 @@ class CloudVaultClient {
                 .build()
 
             val request = Request.Builder()
-                .url("$serverUrl?action=upload")
+                .url("$endpoint?action=upload")
                 .header("Authorization", "Bearer $token")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; NetSubnet App)")
                 .post(multipart)
                 .build()
 
             client.newCall(request).execute().use { response ->
                 val respStr = response.body?.string() ?: ""
-                val json = JSONObject(respStr)
+                val json = parseJsonResponse(respStr, response.code)
                 if (response.isSuccessful && json.optBoolean("success", false)) {
                     val cloudFileId = json.getString("file_id")
                     Result.success(cloudFileId)
                 } else {
-                    Result.failure(Exception(json.optString("error", "Upload gagal ($respStr)")))
+                    Result.failure(Exception(json.optString("error", "Upload gagal: ${json.optString("error")}")))
                 }
             }
         } catch (e: Exception) {
@@ -198,9 +242,11 @@ class CloudVaultClient {
         targetFile: File
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            val endpoint = normalizeUrl(serverUrl)
             val request = Request.Builder()
-                .url("$serverUrl?action=download&id=$cloudFileId")
+                .url("$endpoint?action=download&id=$cloudFileId")
                 .header("Authorization", "Bearer $token")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; NetSubnet App)")
                 .get()
                 .build()
 
@@ -227,15 +273,17 @@ class CloudVaultClient {
         cloudFileId: String
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            val endpoint = normalizeUrl(serverUrl)
             val request = Request.Builder()
-                .url("$serverUrl?action=delete&id=$cloudFileId")
+                .url("$endpoint?action=delete&id=$cloudFileId")
                 .header("Authorization", "Bearer $token")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; NetSubnet App)")
                 .post("{}".toRequestBody("application/json".toMediaTypeOrNull()))
                 .build()
 
             client.newCall(request).execute().use { response ->
                 val respStr = response.body?.string() ?: ""
-                val json = JSONObject(respStr)
+                val json = parseJsonResponse(respStr, response.code)
                 if (response.isSuccessful && json.optBoolean("success", false)) {
                     Result.success(Unit)
                 } else {

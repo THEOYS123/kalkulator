@@ -45,6 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save_telegram_config') {
         $config['telegram_bot_token'] = trim($_POST['telegram_bot_token'] ?? '');
         $config['telegram_admin_chat_id'] = trim($_POST['telegram_admin_chat_id'] ?? '');
+        $config['telegram_api_base'] = trim($_POST['telegram_api_base'] ?? 'https://api.telegram.org');
+        $config['enable_telegram_2fa'] = isset($_POST['enable_telegram_2fa']);
         $config['otp_expiry_minutes'] = max(1, (int)($_POST['otp_expiry_minutes'] ?? 5));
 
         if (saveSystemConfig($storage, $config)) {
@@ -544,8 +546,26 @@ function formatBytes(int $bytes): string {
                 <div class="card-header">
                     <h2>Konfigurasi Bot Telegram (2FA Admin)</h2>
                 </div>
+
+                <div class="alert alert-info" style="line-height: 1.6; margin-bottom: 20px;">
+                    💡 <b>Catatan Penting untuk Hosting Gratis (seperti InfinityFree):</b><br>
+                    Paket gratis InfinityFree membatasi koneksi cURL keluar ke API eksternal (muncul error <i>"Could not resolve host: api.telegram.org"</i>).<br>
+                    • Jika hosting Anda memblokir Telegram, Anda dapat <b>menonaktifkan centang 2FA Telegram</b> di bawah ini agar login admin menggunakan username & password langsung.<br>
+                    • Atau, gunakan <b>Custom Reverse Proxy</b> (seperti Cloudflare Worker) pada kolom Telegram API Base URL.
+                </div>
+
                 <form method="POST">
                     <input type="hidden" name="action" value="save_telegram_config">
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #fff; font-size: 14px;">
+                            <input type="checkbox" name="enable_telegram_2fa" <?= ($config['enable_telegram_2fa'] ?? true) ? 'checked' : '' ?>>
+                            <span><b>Aktifkan Proteksi 2FA Kode OTP Telegram Saat Login</b></span>
+                        </label>
+                        <span style="font-size: 12px; color: var(--text-muted); display: block; margin-top: 4px;">
+                            Hapus centang jika hosting Anda memblokir koneksi keluar cURL ke Telegram agar Anda tidak terkunci.
+                        </span>
+                    </div>
 
                     <div class="form-group">
                         <label>Telegram Bot Token</label>
@@ -557,6 +577,12 @@ function formatBytes(int $bytes): string {
                         <label>Chat ID Admin Telegram</label>
                         <input type="text" name="telegram_admin_chat_id" value="<?= htmlspecialchars($config['telegram_admin_chat_id']) ?>" placeholder="Contoh: 987654321">
                         <span style="font-size: 12px; color: var(--text-muted); display: block; margin-top: 4px;">Dapatkan Chat ID Anda via bot @userinfobot atau @getidsbot di Telegram.</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Telegram API Base URL (Default: https://api.telegram.org)</label>
+                        <input type="text" name="telegram_api_base" value="<?= htmlspecialchars($config['telegram_api_base'] ?? 'https://api.telegram.org') ?>" placeholder="https://api.telegram.org">
+                        <span style="font-size: 12px; color: var(--text-muted); display: block; margin-top: 4px;">Biarkan default, atau gunakan URL Cloudflare Worker proxy jika hosting memblokir Telegram.</span>
                     </div>
 
                     <div class="form-group">

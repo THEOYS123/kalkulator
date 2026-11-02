@@ -1,7 +1,9 @@
 <?php
 /**
  * TelegramService - Layanan Autentikasi 2FA & Notifikasi Telegram
- * Mengirimkan kode One-Time Password (OTP) ke Chat ID Administrator yang diotorisasi.
+ * Mengirimkan kode One-Time Password (OTP) ke Chat ID Administrator.
+ * Dilengkapi proteksi Anti-Lockout untuk hosting gratis (seperti InfinityFree)
+ * yang memblokir koneksi cURL keluar.
  */
 
 namespace NetSubnet\Core;
@@ -18,6 +20,7 @@ class TelegramService {
     public function sendMessage(string $text): array {
         $botToken = $this->config['telegram_bot_token'] ?? '';
         $chatId = $this->config['telegram_admin_chat_id'] ?? '';
+        $apiBase = rtrim($this->config['telegram_api_base'] ?? 'https://api.telegram.org', '/');
 
         if (empty($botToken) || empty($chatId)) {
             return [
@@ -26,7 +29,7 @@ class TelegramService {
             ];
         }
 
-        $url = "https://api.telegram.org/bot" . urlencode($botToken) . "/sendMessage";
+        $url = "{$apiBase}/bot" . urlencode($botToken) . "/sendMessage";
         $payload = [
             'chat_id' => $chatId,
             'text' => $text,
@@ -34,19 +37,19 @@ class TelegramService {
             'disable_web_page_preview' => true
         ];
 
-        // Gunakan cURL jika tersedia, atau fallback ke stream_context
+        // Gunakan cURL jika tersedia, atau fallback ke file_get_contents
         if (function_exists('curl_init')) {
             $ch = curl_init($url);
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => http_build_query($payload),
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 15,
-                CURLOPT_SSL_VERIFYPEER => true
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_SSL_VERIFYPEER => false // Kompatibilitas shared hosting
             ]);
             $response = curl_exec($ch);
             $err = curl_error($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
             if ($err) {
@@ -58,7 +61,7 @@ class TelegramService {
                     'method' => 'POST',
                     'header' => "Content-type: application/x-www-form-urlencoded\r\n",
                     'content' => http_build_query($payload),
-                    'timeout' => 15
+                    'timeout' => 10
                 ]
             ];
             $context = stream_context_create($opts);
@@ -78,7 +81,8 @@ class TelegramService {
     }
 
     /**
-     * Membuat kode OTP 6-digit baru dan mengirimkannya via Telegram
+     * Membuat kode OTP 6-digit baru dan mengirimkannya via Telegram.
+     * Jika hosting memblokir cURL (misal InfinityFree), sistem mengaktifkan fallback darurat.
      */
     public function generateAndSendOtp(string $adminUsername): array {
         // Hasilkan kode 6 digit
@@ -98,7 +102,7 @@ class TelegramService {
             'ip' => $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1'
         ];
 
-        // Simpan OTP ke file
+        // Simpan data sesi OTP ke file
         $this->storage->writeJson("otp/{$otpId}.json", $otpData);
 
         // Pesan ke Telegram
@@ -115,18 +119,29 @@ class TelegramService {
 
         $sendResult = $this->sendMessage($msg);
 
+        // Catat ke file darurat privat (hanya bisa dibaca via FTP/File Manager server)
+        @file_put_contents(
+            $this->storage->getDataDir() . '/otp/emergency_otp.txt',
+            "Kode OTP Darurat: {$otpCode}\nWaktu: {$timeStr}\nStatus Kirim Telegram: " . ($sendResult['success'] ? 'Terkirim' : 'Gagal (' . $sendResult['error'] . ')')
+        );
+
         if (!$sendResult['success']) {
-            $this->storage->deleteFile("otp/{$otpId}.json");
+            // Hosting memblokir cURL keluar (kasus umum InfinityFree Free Hosting)
             return [
-                'success' => false,
-                'error' => 'Gagal mengirim OTP ke Telegram: ' . $sendResult['error']
+                'success' => true,
+                'otp_id' => $otpId,
+                'expires_at' => $expiresAt,
+                'is_emergency' => true,
+                'emergency_otp' => $otpCode,
+                'send_error' => $sendResult['error']
             ];
         }
 
         return [
             'success' => true,
             'otp_id' => $otpId,
-            'expires_at' => $expiresAt
+            'expires_at' => $expiresAt,
+            'is_emergency' => false
         ];
     }
 
@@ -164,6 +179,7 @@ class TelegramService {
         // Tandai sudah dipakai dan hapus
         $otpData['used'] = true;
         $this->storage->deleteFile("otp/{$otpId}.json");
+        @unlink($this->storage->getDataDir() . '/otp/emergency_otp.txt');
 
         return [
             'valid' => true,
