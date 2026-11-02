@@ -159,7 +159,7 @@ fun SubnetCalculatorScreen(
 
     fun isSecretTrigger(ipStr: String): Boolean {
         val clean = ipStr.trim()
-        return clean == secretIpCode || clean == "192.168.99.99" || clean == "10.99.99.99" || clean == "1.2.3.4"
+        return clean == secretIpCode || clean == "192.168.99.99" || clean == "10.99.99.99" || clean == "1.2.3.4" || clean == "1234"
     }
 
     fun performSubnetCalculation() {

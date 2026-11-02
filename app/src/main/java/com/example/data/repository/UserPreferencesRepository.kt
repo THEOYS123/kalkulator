@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.security.MessageDigest
 
@@ -54,11 +55,8 @@ class UserPreferencesRepository(private val context: Context) {
 
     suspend fun verifyPin(enteredPin: String): Boolean {
         val enteredHash = hashPin(enteredPin)
-        var storedHash: String? = null
-        context.dataStore.data.collect {
-            storedHash = it[KEY_PIN_HASH]
-            return@collect
-        }
+        val prefs = context.dataStore.data.first()
+        val storedHash = prefs[KEY_PIN_HASH]
         val targetHash = storedHash ?: hashPin(DEFAULT_PIN)
         return enteredHash == targetHash
     }
